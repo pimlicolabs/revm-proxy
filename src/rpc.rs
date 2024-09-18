@@ -165,13 +165,7 @@ impl PassthroughApiServer for PassthroughProxy {
     }
 
     async fn chain_id(&self) -> RpcResult<U64> {
-        let chain_id = self
-            .provider
-            .get_chain_id()
-            .await
-            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
-
-        Ok(U64::from(chain_id))
+        Ok(U64::from(self.chain_id))
     }
 
     async fn max_priority_fee_per_gas(&self) -> RpcResult<U256> {
