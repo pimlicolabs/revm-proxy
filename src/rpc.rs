@@ -105,11 +105,20 @@ pub trait PassthroughApi {
 
     #[method(name = "getCode")]
     async fn get_code(&self, address: Address, block_number: Option<BlockId>) -> RpcResult<Bytes>;
+
+    #[method(name = "sendRawTransaction")]
+    async fn send_raw_transaction(&self, bytes: Bytes) -> RpcResult<B256>;
 }
 
 #[async_trait]
 impl PassthroughApiServer for PassthroughProxy {
     /* Fallthrough methods */
+    async fn send_raw_transaction(&self, bytes: Bytes) -> RpcResult<B256> {
+        let tx_hash = self.provider.send_raw_transaction(&bytes).await.map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
+        Ok(*tx_hash.tx_hash())
+    }
+
     async fn gas_price(&self) -> RpcResult<U256> {
         let gas_price = self
             .provider
