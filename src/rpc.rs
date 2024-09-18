@@ -1,13 +1,30 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use alloy_provider::Provider;
 use async_trait::async_trait;
 use foundry_common::provider::{ProviderBuilder, RetryProvider};
 use foundry_evm::backend::{BlockchainDb, BlockchainDbMeta, SharedBackend};
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
-use reth_primitives::{BlockId, Bytes, U256};
+use reth_primitives::{Address, BlockId, Bytes, B256, U256, U64};
 use reth_rpc_eth_types::{error::ensure_success, EthApiError};
-use reth_rpc_types::{state::StateOverride, TransactionRequest};
+use reth_rpc_types::{
+    state::StateOverride, AnyNetworkBlock, AnyTransactionReceipt, Block, BlockNumberOrTag,
+    BlockTransactionsKind, Filter, Log, Transaction, TransactionRequest, WithOtherFields,
+};
 use revm::{db::CacheDB, Evm};
+
+#[derive(Clone, Debug)]
+pub struct PassthroughProxy {
+    provider: Arc<RetryProvider>,
+}
+
+impl PassthroughProxy {
+    pub fn init(endpoint: &str) -> eyre::Result<Self> {
+        let provider = Arc::new(ProviderBuilder::new(endpoint).build()?);
+
+        Ok(Self { provider })
+    }
+}
 
 #[rpc(server, namespace = "eth")]
 pub trait PassthroughApi {
@@ -26,55 +43,136 @@ pub trait PassthroughApi {
         block_number: Option<BlockId>,
         state_overrides: Option<StateOverride>,
     ) -> RpcResult<Bytes>;
-}
 
-#[derive(Clone, Debug)]
-pub struct PassthroughProxy {
-    provider: Arc<RetryProvider>,
-}
+    /* Endpoints that will fallthrough and call using provider */
+    #[method(name = "blockNumber")]
+    async fn block_number(&self) -> RpcResult<U256>;
 
-impl PassthroughProxy {
-    pub fn init(endpoint: &str) -> eyre::Result<Self> {
-        let provider = Arc::new(ProviderBuilder::new(endpoint).build()?);
+    #[method(name = "getBalance")]
+    async fn balance(&self, address: Address, block_number: Option<BlockId>) -> RpcResult<U256>;
 
-        Ok(Self { provider })
-    }
+    #[method(name = "maxPriorityFeePerGas")]
+    async fn max_priority_fee_per_gas(&self) -> RpcResult<U256>;
 
-    async fn forward_request(&self, method: &str, params: Value) -> RpcResult<Value> {
-        let request_json = json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params,
-        });
+    #[method(name = "chainId")]
+    async fn chain_id(&self) -> RpcResult<U64>;
 
-        let response = self
-            .client
-            .post(&self.provider_url)
-            .json(&request_json)
-            .send()
-            .await
-            .map_err(|e| JsonRpseeError::Custom(e.to_string()))?;
+    #[method(name = "getTransactionCount")]
+    async fn transaction_count(
+        &self,
+        address: Address,
+        block_number: Option<BlockId>,
+    ) -> RpcResult<U256>;
 
-        let response_json: Value = response
-            .json()
-            .await
-            .map_err(|e| JsonRpseeError::Custom(e.to_string()))?;
+    #[method(name = "getLogs")]
+    async fn logs(&self, filter: Filter) -> RpcResult<Vec<Log>>;
 
-        if let Some(error) = response_json.get("error") {
-            Err(JsonRpseeError::Custom(error.to_string()))
-        } else if let Some(result) = response_json.get("result") {
-            Ok(result.clone())
-        } else {
-            Err(JsonRpseeError::Custom(
-                "Invalid response from provider".to_string(),
-            ))
-        }
-    }
+    #[method(name = "getBlockByNumber")]
+    async fn block_by_number(
+        &self,
+        number: BlockNumberOrTag,
+        full: bool,
+    ) -> RpcResult<Option<AnyNetworkBlock>>;
+
+    #[method(name = "getTransactionReceipt")]
+    async fn transaction_receipt(&self, hash: B256) -> RpcResult<Option<AnyTransactionReceipt>>;
 }
 
 #[async_trait]
 impl PassthroughApiServer for PassthroughProxy {
+    /* Fallthrough methods */
+    async fn transaction_receipt(&self, hash: B256) -> RpcResult<Option<AnyTransactionReceipt>> {
+        let receipt = self
+            .provider
+            .get_transaction_receipt(hash)
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
+        Ok(receipt)
+    }
+
+    async fn block_by_number(
+        &self,
+        number: BlockNumberOrTag,
+        full: bool,
+    ) -> RpcResult<Option<AnyNetworkBlock>> {
+        let block_tx_kind = if full {
+            BlockTransactionsKind::Full
+        } else {
+            BlockTransactionsKind::Hashes
+        };
+
+        let block: Option<WithOtherFields<Block<WithOtherFields<Transaction>>>> = self
+            .provider
+            .get_block(number.into(), block_tx_kind)
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
+        Ok(block)
+    }
+
+    async fn logs(&self, filter: Filter) -> RpcResult<Vec<Log>> {
+        let logs = self
+            .provider
+            .get_logs(&filter)
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+        Ok(logs)
+    }
+
+    async fn transaction_count(
+        &self,
+        address: Address,
+        block_number: Option<BlockId>,
+    ) -> RpcResult<U256> {
+        let nonce = self
+            .provider
+            .get_transaction_count(address)
+            .block_id(block_number.unwrap_or_default())
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+        Ok(U256::from(nonce))
+    }
+
+    async fn chain_id(&self) -> RpcResult<U64> {
+        let chain_id = self
+            .provider
+            .get_chain_id()
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+        Ok(U64::from(chain_id))
+    }
+
+    async fn max_priority_fee_per_gas(&self) -> RpcResult<U256> {
+        let mpfpg = self
+            .provider
+            .get_max_priority_fee_per_gas()
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+        Ok(U256::from(mpfpg))
+    }
+
+    async fn block_number(&self) -> RpcResult<U256> {
+        let block_num = self
+            .provider
+            .get_block_number()
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+        Ok(U256::from(block_num))
+    }
+
+    async fn balance(&self, address: Address, block_number: Option<BlockId>) -> RpcResult<U256> {
+        let bal = self
+            .provider
+            .get_balance(address)
+            .block_id(block_number.unwrap_or_default())
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+        Ok(bal)
+    }
+
+    /* Methods using REVM */
+
     async fn estimate_gas(
         &self,
         request: TransactionRequest,

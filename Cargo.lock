@@ -6549,6 +6549,7 @@ dependencies = [
 name = "revm-passthrough-proxy"
 version = "0.1.0"
 dependencies = [
+ "alloy-json-rpc",
  "alloy-provider",
  "anvil",
  "async-trait",
@@ -6556,6 +6557,7 @@ dependencies = [
  "foundry-common",
  "foundry-evm",
  "jsonrpsee",
+ "jsonrpsee-types",
  "reth-primitives",
  "reth-rpc-eth-api",
  "reth-rpc-eth-types",
