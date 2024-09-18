@@ -2,28 +2,50 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use alloy_provider::Provider;
 use async_trait::async_trait;
+use ethers_providers::{Http, Provider as EthersProvider};
 use foundry_common::provider::{ProviderBuilder, RetryProvider};
 use foundry_evm::backend::{BlockchainDb, BlockchainDbMeta, SharedBackend};
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use reth_primitives::{Address, BlockId, Bytes, B256, U256, U64};
 use reth_rpc_eth_types::{error::ensure_success, EthApiError};
 use reth_rpc_types::{
-    state::StateOverride, AnyNetworkBlock, AnyTransactionReceipt, Block, BlockNumberOrTag,
-    BlockTransactionsKind, Filter, Log, Transaction, TransactionRequest, WithOtherFields,
+    state::StateOverride, AnyNetworkBlock, AnyTransactionReceipt, Block,
+    BlockNumberOrTag, BlockTransactionsKind, Filter, Log, Transaction, TransactionRequest,
+    WithOtherFields,
 };
-use revm::{db::CacheDB, primitives::CfgEnv, Evm};
+use revm::{db::{CacheDB, EthersDB}, primitives::{CfgEnv, AccountInfo}, Database, Evm};
 
 #[derive(Clone, Debug)]
 pub struct PassthroughProxy {
     chain_id: u64,
+    preloads: Vec<(Address, AccountInfo)>,
     provider: Arc<RetryProvider>,
 }
 
 impl PassthroughProxy {
-    pub fn init(endpoint: &str, chain_id: u64) -> eyre::Result<Self> {
+    pub fn init(endpoint: &str, preloads: Vec<Address>, chain_id: u64) -> eyre::Result<Self> {
         let provider = Arc::new(ProviderBuilder::new(endpoint).build()?);
 
-        Ok(Self { provider, chain_id })
+        // create ethers client and wrap it in Arc<M>
+        let client = EthersProvider::<Http>::try_from(
+            endpoint,
+        ).unwrap();
+        let client = Arc::new(client);
+
+        let mut ethersdb = EthersDB::new(client, None).unwrap();
+
+        let mut preloaded_accounts = Vec::new();
+
+        for address in preloads {
+            let account_info = ethersdb.basic(address).unwrap().unwrap();
+            preloaded_accounts.push((address, account_info));
+        }
+
+        Ok(Self {
+            provider,
+            chain_id,
+            preloads: preloaded_accounts,
+        })
     }
 }
 
@@ -223,22 +245,29 @@ impl PassthroughApiServer for PassthroughProxy {
         let db = CacheDB::new(shared_backend);
         let mut evm = Evm::builder()
             .with_db(db)
+            .modify_cfg_env(|cfg| {
+                cfg.chain_id = self.chain_id;
+            })
             .modify_tx_env(|tx| {
                 tx.caller = request.from.unwrap_or(tx.caller);
                 tx.data = request.input.data.unwrap_or_default();
                 tx.value = request.value.unwrap_or_default();
-                tx.nonce = request.nonce;
                 tx.transact_to = request.to.unwrap_or(tx.transact_to);
-                tx.gas_limit = request
-                    .gas
-                    .map(|g| g.try_into().unwrap_or(u64::MAX))
-                    .unwrap_or(tx.gas_limit);
-                tx.gas_price = request
-                    .gas_price
-                    .map(|g| U256::from(g))
-                    .unwrap_or(tx.gas_price);
+                //tx.nonce = request.nonce;
+                //tx.gas_limit = request
+                //    .gas
+                //    .map(|g| g.try_into().unwrap_or(u64::MAX))
+                //    .unwrap_or(tx.gas_limit);
+                //tx.gas_price = request
+                //    .gas_price
+                //    .map(|g| U256::from(g))
+                //    .unwrap_or(tx.gas_price);
             })
             .build();
+
+        for (address, preload) in self.preloads.iter() {
+            evm.db_mut().insert_account_info(*address, preload.clone());
+        }
 
         // Apply state overrides if provided
         if let Some(overrides) = state_override {
@@ -297,6 +326,9 @@ impl PassthroughApiServer for PassthroughProxy {
         let db = CacheDB::new(shared_backend);
         let mut evm = Evm::builder()
             .with_db(db)
+            .modify_cfg_env(|cfg| {
+                cfg.chain_id = self.chain_id;
+            })
             .modify_tx_env(|tx| {
                 tx.caller = request.from.unwrap_or(tx.caller);
                 tx.data = request.input.data.unwrap_or_default();
@@ -313,6 +345,10 @@ impl PassthroughApiServer for PassthroughProxy {
                     .unwrap_or(tx.gas_price);
             })
             .build();
+
+        for (address, preload) in self.preloads.iter() {
+            evm.db_mut().insert_account_info(*address, preload.clone());
+        }
 
         // Apply state overrides if provided
         if let Some(overrides) = state_overrides {

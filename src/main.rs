@@ -1,7 +1,8 @@
 use eyre::Result;
 use jsonrpsee::server::ServerBuilder;
+use reth_primitives::Address;
 use revm_passthrough_proxy::rpc::{PassthroughApiServer, PassthroughProxy};
-use std::env;
+use std::{env, str::FromStr};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -16,7 +17,11 @@ async fn main() -> Result<()> {
         .expect("CHAIN_ID must be a valid u64");
 
     // Initialize the PassthroughProxy
-    let proxy = PassthroughProxy::init(&endpoint, chain_id)?;
+    let preloads: Vec<Address> = vec![
+        Address::from_str("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789").unwrap(),
+        Address::from_str("0x0000000071727De22E5E9d8BAf0edAc6f37da032").unwrap(),
+    ];
+    let proxy = PassthroughProxy::init(&endpoint, preloads, chain_id)?;
 
     let server = ServerBuilder::default()
         .build(format!("0.0.0.0:{}", port))
