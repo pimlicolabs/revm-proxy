@@ -216,7 +216,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .with_db(db)
             .modify_tx_env(|tx| {
                 tx.caller = request.from.unwrap_or(tx.caller);
-                tx.data = request.input.input.unwrap_or_default();
+                tx.data = request.input.data.unwrap_or_default();
                 tx.value = request.value.unwrap_or_default();
                 tx.nonce = request.nonce;
                 tx.transact_to = request.to.unwrap_or(tx.transact_to);
