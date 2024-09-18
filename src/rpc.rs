@@ -79,6 +79,9 @@ pub trait PassthroughApi {
 
     #[method(name = "gasPrice")]
     async fn gas_price(&self) -> RpcResult<U256>;
+
+    #[method(name = "getCode")]
+    async fn get_code(&self, address: Address, block_number: Option<BlockId>) -> RpcResult<Bytes>;
 }
 
 #[async_trait]
@@ -92,6 +95,17 @@ impl PassthroughApiServer for PassthroughProxy {
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
 
         Ok(U256::from(gas_price))
+    }
+
+    async fn get_code(&self, address: Address, block_number: Option<BlockId>) -> RpcResult<Bytes> {
+        let code = self
+            .provider
+            .get_code_at(address)
+            .block_id(block_number.unwrap_or_default())
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
+        Ok(code)
     }
 
     async fn transaction_receipt(&self, hash: B256) -> RpcResult<Option<AnyTransactionReceipt>> {
