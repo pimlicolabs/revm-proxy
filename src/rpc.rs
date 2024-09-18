@@ -11,18 +11,19 @@ use reth_rpc_types::{
     state::StateOverride, AnyNetworkBlock, AnyTransactionReceipt, Block, BlockNumberOrTag,
     BlockTransactionsKind, Filter, Log, Transaction, TransactionRequest, WithOtherFields,
 };
-use revm::{db::CacheDB, Evm};
+use revm::{db::CacheDB, primitives::CfgEnv, Evm};
 
 #[derive(Clone, Debug)]
 pub struct PassthroughProxy {
+    chain_id: u64,
     provider: Arc<RetryProvider>,
 }
 
 impl PassthroughProxy {
-    pub fn init(endpoint: &str) -> eyre::Result<Self> {
+    pub fn init(endpoint: &str, chain_id: u64) -> eyre::Result<Self> {
         let provider = Arc::new(ProviderBuilder::new(endpoint).build()?);
 
-        Ok(Self { provider })
+        Ok(Self { provider, chain_id })
     }
 }
 
@@ -216,7 +217,7 @@ impl PassthroughApiServer for PassthroughProxy {
             self.provider.clone(),
             BlockchainDb::new(
                 BlockchainDbMeta {
-                    cfg_env: Default::default(),
+                    cfg_env: CfgEnv::default().with_chain_id(self.chain_id),
                     block_env: Default::default(),
                     hosts: BTreeSet::from(["".to_string()]),
                 },
@@ -290,7 +291,7 @@ impl PassthroughApiServer for PassthroughProxy {
             self.provider.clone(),
             BlockchainDb::new(
                 BlockchainDbMeta {
-                    cfg_env: Default::default(),
+                    cfg_env: CfgEnv::default().with_chain_id(self.chain_id),
                     block_env: Default::default(),
                     hosts: BTreeSet::from(["".to_string()]),
                 },

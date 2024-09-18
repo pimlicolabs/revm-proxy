@@ -10,8 +10,13 @@ async fn main() -> Result<()> {
 
     let port = env::var("PORT").expect("env var PORT must be set");
 
+    let chain_id: u64 = env::var("CHAIN_ID")
+        .expect("env var CHAIN_ID must be set")
+        .parse()
+        .expect("CHAIN_ID must be a valid u64");
+
     // Initialize the PassthroughProxy
-    let proxy = PassthroughProxy::init(&endpoint)?;
+    let proxy = PassthroughProxy::init(&endpoint, chain_id)?;
 
     let server = ServerBuilder::default()
         .build(format!("0.0.0.0:{}", port))
