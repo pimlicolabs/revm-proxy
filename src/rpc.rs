@@ -76,11 +76,24 @@ pub trait PassthroughApi {
 
     #[method(name = "getTransactionReceipt")]
     async fn transaction_receipt(&self, hash: B256) -> RpcResult<Option<AnyTransactionReceipt>>;
+
+    #[method(name = "gasPrice")]
+    async fn gas_price(&self) -> RpcResult<U256>;
 }
 
 #[async_trait]
 impl PassthroughApiServer for PassthroughProxy {
     /* Fallthrough methods */
+    async fn gas_price(&self) -> RpcResult<U256> {
+        let gas_price = self
+            .provider
+            .get_gas_price()
+            .await
+            .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
+        Ok(U256::from(gas_price))
+    }
+
     async fn transaction_receipt(&self, hash: B256) -> RpcResult<Option<AnyTransactionReceipt>> {
         let receipt = self
             .provider
@@ -117,6 +130,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .get_logs(&filter)
             .await
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
         Ok(logs)
     }
 
@@ -131,6 +145,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .block_id(block_number.unwrap_or_default())
             .await
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
         Ok(U256::from(nonce))
     }
 
@@ -140,6 +155,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .get_chain_id()
             .await
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
         Ok(U64::from(chain_id))
     }
 
@@ -149,6 +165,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .get_max_priority_fee_per_gas()
             .await
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
         Ok(U256::from(mpfpg))
     }
 
@@ -158,6 +175,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .get_block_number()
             .await
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
         Ok(U256::from(block_num))
     }
 
@@ -168,6 +186,7 @@ impl PassthroughApiServer for PassthroughProxy {
             .block_id(block_number.unwrap_or_default())
             .await
             .map_err(|e| EthApiError::InvalidParams(e.to_string()))?;
+
         Ok(bal)
     }
 
