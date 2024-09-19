@@ -24,7 +24,7 @@ pub struct PassthroughProxy {
 
 impl PassthroughProxy {
     pub fn init(endpoint: &str, preloads: Vec<Address>, chain_id: u64) -> eyre::Result<Self> {
-        let provider = Arc::new(ProviderBuilder::new(endpoint).build()?);
+        let provider = Arc::new(ProviderBuilder::new(endpoint).max_retry(32).build()?);
 
         // create ethers client and wrap it in Arc<M>
         let client = EthersProvider::<Http>::try_from(
