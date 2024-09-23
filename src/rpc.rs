@@ -331,7 +331,10 @@ impl PassthroughApiServer for PassthroughProxy {
             block_number,
         );
 
-        let db = CacheDB::new(shared_backend);
+        let mut db = CacheDB::new(shared_backend);
+        for (address, preload) in self.preloads.iter() {
+            db.insert_account_info(*address, preload.clone());
+        }
         let mut evm = Evm::builder()
             .with_db(db)
             .modify_cfg_env(|cfg| {
@@ -353,10 +356,6 @@ impl PassthroughApiServer for PassthroughProxy {
                     .unwrap_or(tx.gas_price);
             })
             .build();
-
-        for (address, preload) in self.preloads.iter() {
-            evm.db_mut().insert_account_info(*address, preload.clone());
-        }
 
         // Apply state overrides if provided
         if let Some(overrides) = state_overrides {
