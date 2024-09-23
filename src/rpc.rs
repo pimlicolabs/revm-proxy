@@ -13,7 +13,7 @@ use reth_rpc_types::{
     BlockNumberOrTag, BlockTransactionsKind, Filter, Log, Transaction, TransactionRequest,
     WithOtherFields,
 };
-use revm::{db::{CacheDB, EthersDB}, primitives::{CfgEnv, AccountInfo}, Database, Evm};
+use revm::{db::{CacheDB, EthersDB}, primitives::{AccountInfo, CfgEnv}, Database, DatabaseRef, Evm};
 
 #[derive(Clone, Debug)]
 pub struct PassthroughProxy {
@@ -287,12 +287,13 @@ impl PassthroughApiServer for PassthroughProxy {
                 if let Some(balance) = account.balance {
                     let mut account_info = evm
                         .db_mut()
-                        .load_account(*address)
+                        .basic_ref(*address)
                         .map_err(|e| EthApiError::EvmCustom(e.to_string()))?
+                        .unwrap()
                         .clone();
-                    account_info.info.balance = balance;
+                    account_info.balance = balance;
                     evm.db_mut()
-                        .insert_account_info(*address, account_info.info);
+                        .insert_account_info(*address, account_info);
                 }
                 if let Some(storage) = &account.state_diff {
                     for (key, value) in storage {
@@ -368,12 +369,13 @@ impl PassthroughApiServer for PassthroughProxy {
                 if let Some(balance) = account.balance {
                     let mut account_info = evm
                         .db_mut()
-                        .load_account(*address)
+                        .basic_ref(*address)
                         .map_err(|e| EthApiError::EvmCustom(e.to_string()))?
+                        .unwrap()
                         .clone();
-                    account_info.info.balance = balance;
+                    account_info.balance = balance;
                     evm.db_mut()
-                        .insert_account_info(*address, account_info.info);
+                        .insert_account_info(*address, account_info);
                 }
                 if let Some(storage) = &account.state_diff {
                     for (key, value) in storage {
