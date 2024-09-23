@@ -39,6 +39,9 @@ impl PassthroughProxy {
         for address in preloads {
             let account_info = ethersdb.basic(address).unwrap().unwrap();
             preloaded_accounts.push((address, account_info));
+
+            // Add a manual sleep for 2 seconds
+            std::thread::sleep(std::time::Duration::from_secs(2));
         }
 
         Ok(Self {
