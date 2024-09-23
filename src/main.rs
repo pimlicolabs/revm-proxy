@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         Address::from_str("0x0000000000000039cd5e8ae05257ce51c473ddd1").unwrap(),
         Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
     ];
-    let proxy = PassthroughProxy::init(&endpoint, preloads, chain_id)?;
+    let proxy = PassthroughProxy::init(&endpoint, preloads, chain_id).await?;
 
     let server = ServerBuilder::default()
         .build(format!("0.0.0.0:{}", port))

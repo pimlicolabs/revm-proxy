@@ -2,7 +2,6 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use alloy_provider::Provider;
 use async_trait::async_trait;
-use ethers_providers::{Http, Provider as EthersProvider};
 use foundry_common::provider::{ProviderBuilder, RetryProvider};
 use foundry_evm::backend::{BlockchainDb, BlockchainDbMeta, SharedBackend};
 use jsonrpsee::{core::RpcResult, proc_macros::rpc};
@@ -13,7 +12,7 @@ use reth_rpc_types::{
     BlockNumberOrTag, BlockTransactionsKind, Filter, Log, Transaction, TransactionRequest,
     WithOtherFields,
 };
-use revm::{db::{CacheDB, EthersDB}, primitives::{AccountInfo, CfgEnv}, Database, DatabaseRef, Evm};
+use reth_revm::{db::CacheDB, primitives::{AccountInfo, Bytecode, CfgEnv}, DatabaseRef, Evm};
 
 #[derive(Clone, Debug)]
 pub struct PassthroughProxy {
@@ -23,25 +22,21 @@ pub struct PassthroughProxy {
 }
 
 impl PassthroughProxy {
-    pub fn init(endpoint: &str, preloads: Vec<Address>, chain_id: u64) -> eyre::Result<Self> {
+    pub async fn init(endpoint: &str, preloads: Vec<Address>, chain_id: u64) -> eyre::Result<Self> {
         let provider = Arc::new(ProviderBuilder::new(endpoint).max_retry(32).build()?);
-
-        // create ethers client and wrap it in Arc<M>
-        let client = EthersProvider::<Http>::try_from(
-            endpoint,
-        ).unwrap();
-        let client = Arc::new(client);
-
-        let mut ethersdb = EthersDB::new(client, None).unwrap();
-
         let mut preloaded_accounts = Vec::new();
 
         for address in preloads {
-            let account_info = ethersdb.basic(address).unwrap().unwrap();
-            preloaded_accounts.push((address, account_info));
+            let nonce = provider.get_transaction_count(address).await.unwrap();
+            let balance = provider.get_balance(address).await.unwrap();
+            let code = provider.get_code_at(address).await.unwrap();
 
-            // Add a manual sleep for 2 seconds
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            let code = Bytecode::new_raw(code);
+            let code_hash = code.hash_slow();
+
+            let account_info = AccountInfo { balance, nonce, code_hash, code: Some(code) };
+
+            preloaded_accounts.push((address, account_info));
         }
 
         Ok(Self {
