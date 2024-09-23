@@ -20,6 +20,9 @@ async fn main() -> Result<()> {
     let preloads: Vec<Address> = vec![
         Address::from_str("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789").unwrap(),
         Address::from_str("0x0000000071727De22E5E9d8BAf0edAc6f37da032").unwrap(),
+        Address::from_str("0x00000000000000fB866DaAA79352cC568a005D96").unwrap(),
+        Address::from_str("0x0000000000000039cd5e8ae05257ce51c473ddd1").unwrap(),
+        Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
     ];
     let proxy = PassthroughProxy::init(&endpoint, preloads, chain_id)?;
 
